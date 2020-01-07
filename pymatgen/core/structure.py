@@ -3293,6 +3293,18 @@ class Structure(IStructure, collections.abc.MutableSequence):
 
         self._sites = [operate_site(s) for s in self._sites]
 
+
+    def print_first_time(self, space_group, color, exclaim = True):
+        """
+
+        Args:
+            space_group:
+            color:
+            exclaim:
+
+        Returns:
+
+        """
     @deprecated(message="Simply set using Structure.lattice = lattice. This will be removed in pymatgen v2020.")
     def modify_lattice(self, new_lattice):
         """
