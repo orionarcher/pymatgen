@@ -23,6 +23,10 @@ import warnings
 from collections import OrderedDict
 from io import StringIO
 from pathlib import Path
+from copy import deepcopy
+from random import randint
+import tempfile
+import os
 
 import numpy as np
 import pandas as pd
@@ -32,9 +36,10 @@ from monty.dev import deprecated
 from monty.json import MSONable
 from monty.serialization import loadfn
 
-
 from pymatgen import Molecule, Element, Lattice, Structure, SymmOp
 from pymatgen.util.io_utils import clean_lines
+from pymatgen.io.lammps.utils import PackmolRunner
+from pymatgen.io.xyz import XYZ
 
 __author__ = "Kiran Mathew, Zhi Deng, Tingzheng Hou"
 __copyright__ = "Copyright 2018, The Materials Virtual Lab"
@@ -220,7 +225,7 @@ class LammpsData(MSONable):
     """
 
     def __init__(self, box, masses, atoms, velocities=None, force_field=None,
-                 topology=None, atom_style="full"):
+                 topology=None, atom_style="full", molname=None):
         """
         This is a low level constructor designed to work with parsed
         data or other bridging objects (ForceField and Topology). Not
@@ -267,6 +272,7 @@ class LammpsData(MSONable):
         self.force_field = force_field
         self.topology = topology
         self.atom_style = atom_style
+        self.molname = molname
 
     def __str__(self):
         return self.get_string()
