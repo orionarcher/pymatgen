@@ -309,6 +309,68 @@ class LammpsData(MSONable):
         return Structure(latt, species, coords, coords_are_cartesian=True,
                          site_properties=site_properties)
 
+    def get_charges(self):
+        """
+        Return the partial charges of every atom in the molecule.
+
+        Returns:
+            charges (numpy array)
+
+        """
+        return self.structure.as_dataframe()['charge'].to_numpy()
+
+    def set_charges(self, charges, new_instance=False):
+        """
+        Sets the partial charges to new values given in the numpy array. Order must match the original charges.
+
+        Args:
+            charges: an array, Series, or list of charges, length must be equal to the number of atoms in LammpsData.
+            new_instance (bool): if False, will alter the charges of the original LammpsData instance and return it. If
+            True, will still alter the charges, but will create a new, identical LammpsData object and return it.
+
+        Returns:
+            LammpsData with new charges
+        """
+        assert len(charges) == len(self.get_charges()), "length of charges must be equal to number of atoms in " \
+                                                        "LammpsData"
+        assert isinstance(new_instance, bool), "new_instance must be a boolean"
+
+        if new_instance:
+            mol = deepcopy(self)
+        else:
+            mol = self
+
+        mol.atoms.q = np.array(charges)
+        return mol
+
+    def set_dihedral_type(self, dihed_type, new_instance=False):
+        """
+        Sets the dihedral within the LammpsData force field. # TODO: make this change dihedral type, not just set
+
+        Args:
+            dihed_type: A string or list of strings. All dihedral types are set to that string. If a list of strings,
+                the dihedral types are assigned in order to each dihedral.
+            new_instance (bool): if False, will alter the dihed type of the original LammpsData instance and return it.
+             If True, will still alter the dihed type, but will create a new, identical LammpsData object and return it.
+
+        """
+        if new_instance:
+            mol = deepcopy(self)
+        else:
+            mol = self
+        dihedrals = mol.force_field["Dihedral Coeffs"]
+        if type(dihed_type) == str:
+            dihed_type = np.full(len(dihedrals), dihed_type)
+            dihedrals.insert(0, "dihedral type", dihed_type)
+        return mol
+
+    @property
+    def MW(self):
+        """
+        Returns the molecular weight of the lammps data
+        """
+        return self.structure.composition.weight
+
     def get_string(self, distance=6, velocity=8, charge=4):
         """
         Returns the string representation of LammpsData, essentially
@@ -376,6 +438,7 @@ class LammpsData(MSONable):
 
         def map_charges(q):
             return ("{:.%df}" % charge).format(q)
+
         float_format = '{:.9f}'.format
         float_format_2 = '{:.1f}'.format
         int_format = '{:.0f}'.format
@@ -544,6 +607,7 @@ class LammpsData(MSONable):
         if self.topology:
             def label_topo(t):
                 return tuple(masses.loc[atoms_df.loc[t, "type"], "label"])
+
             for k, v in self.topology.items():
                 ff_kw = k[:-1] + " Coeffs"
                 for topo in v.itertuples(False, None):
@@ -551,7 +615,7 @@ class LammpsData(MSONable):
                     indices = list(topo[1:])
                     mids = atoms_df.loc[indices]["molecule-ID"].unique()
                     assert len(mids) == 1, "Do not support intermolecular topology formed " \
-                        "by atoms with different molecule-IDs"
+                                           "by atoms with different molecule-IDs"
                     label = label_topo(indices)
                     topo_coeffs[ff_kw][topo_idx]["types"].append(label)
                     if data_by_mols[mids[0]].get(k):
@@ -593,7 +657,7 @@ class LammpsData(MSONable):
         return self.box, ff, topo_list
 
     @classmethod
-    def from_file(cls, filename, atom_style="full", sort_id=False):
+    def from_file(cls, filename, atom_style="full", sort_id=False, molname=None):
         """
         Constructor that parses a file.
 
@@ -715,6 +779,7 @@ class LammpsData(MSONable):
             if topo_kws else None
         items["atom_style"] = atom_style
         items["box"] = box
+        items["molname"] = molname
         return cls(**items)
 
     @classmethod
@@ -843,8 +908,10 @@ class LammpsData(MSONable):
         Args:
             d (dict): Dictionary to read.
         """
+
         def decode_df(s):
             return pd.read_json(s, orient="split")
+
         items = dict()
         items["box"] = LammpsBox.from_dict(d["box"])
         items["masses"] = decode_df(d["masses"])
@@ -870,8 +937,10 @@ class LammpsData(MSONable):
         Returns the LammpsData as a dict.
 
         """
+
         def encode_df(df):
             return df.to_json(orient="split")
+
         d = dict()
         d["@module"] = self.__class__.__module__
         d["@class"] = self.__class__.__name__
@@ -1085,9 +1154,11 @@ class ForceField(MSONable):
                 be defined MORE THAN ONCE with DIFFERENT coefficients.
 
         """
+
         def map_mass(v):
             return v.atomic_mass.real if isinstance(v, Element) else Element(v).atomic_mass.real \
                 if isinstance(v, str) else v
+
         index, masses, self.mass_info, atoms_map = [], [], [], {}
         for i, m in enumerate(mass_info):
             index.append(i + 1)
@@ -1251,7 +1322,7 @@ class CombinedData(LammpsData):
 
         max_xyz = coordinates[['x', 'y', 'z']].max().max()
         min_xyz = coordinates[['x', 'y', 'z']].min().min()
-        self.box = LammpsBox(np.array(3*[[min_xyz - 0.5, max_xyz + 0.5]]))
+        self.box = LammpsBox(np.array(3 * [[min_xyz - 0.5, max_xyz + 0.5]]))
         self.atom_style = atom_style
         self.n = sum(list_of_numbers)
         self.names = list_of_names
@@ -1302,7 +1373,7 @@ class CombinedData(LammpsData):
                         self.topology[kw] = self.topology[kw].append(topo_df, ignore_index=True)
                         for col in topo_df.columns[1:]:
                             topo_df[col] += len(mol.atoms)
-                    count[kw] += len(mol.force_field[kw[:-1]+" Coeffs"])
+                    count[kw] += len(mol.force_field[kw[:-1] + " Coeffs"])
             atom_count += len(mol.atoms) * self.nums[i]
         for kw in SECTION_KEYWORDS["topology"]:
             if kw in self.topology:
