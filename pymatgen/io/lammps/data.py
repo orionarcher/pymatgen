@@ -1444,6 +1444,57 @@ class CombinedData(LammpsData):
             assert atom_style == style_return, "Data have different atom_style as specified."
         return cls(mols, names, list_of_numbers, coordinates, style_return)
 
+    @classmethod
+    def from_lammpsdata_pack(cls, mols, names, list_of_numbers, box_dims=None, density=None, write_file=False,
+                             **kwargs):
+        """
+        A version of from_lammpsdata that uses Packmol to generate a coordinates file.
+        The input LammpsData objects are used non-destructively.
+
+        Requires OpenBabel to be installed with python plugins.
+
+        Args:
+            mols: a list of LammpsData of a single cluster
+            names: a list of name for each cluster.
+            list_of_numbers: a list of Integer for counts of each molecule
+            box_dims: a list specifying the coordinates of the box of the form (Angstrom)
+            density: the solution density (g/ml)
+            write_file: if true, will write a coordinates file to the current working directory
+            **kwargs: these keywords will be passed to PackmolRunner.
+
+        Returns:
+            CombinedData
+        """
+        assert (box_dims is None) ^ (density is None), "Must include box_size OR density, not both"
+
+        if density:
+            cm3_to_A3 = 1e24
+            NA = 6.02214e23
+            mol_MWs = np.array([mol.structure.composition.weight for mol in mols])
+            array_of_numbers = np.array(list_of_numbers)
+            total_weight = sum(mol_MWs * array_of_numbers)
+            box_volume = total_weight * cm3_to_A3 / (NA * density)
+            side_length = box_volume ** (1/3)
+            box_dims = [0., 0., 0., side_length, side_length, side_length]
+
+        param_list = [{"number": number, "inside box": box_dims} for number in list_of_numbers]
+        controls = {"maxit": 20, "nloop": 600, 'seed': randint(100, 999)}
+        molecules = [Molecule.from_sites(mol.structure.sites) for mol in mols]
+
+        packmol_runner = PackmolRunner(molecules, param_list, control_params=controls, auto_box=False,
+                                       **kwargs)
+        if not write_file:
+            with tempfile.TemporaryDirectory() as scratch_dir:
+                current_working_directory = os.getcwd()
+                os.chdir(scratch_dir)
+                packed_box = packmol_runner.run()
+                os.chdir(current_working_directory)
+        else:
+            packed_box = packmol_runner.run()
+        coordinates = XYZ(packed_box).as_dataframe()
+
+        return CombinedData.from_lammpsdata(mols, names, list_of_numbers, coordinates)
+
     def get_string(self, distance=6, velocity=8, charge=4):
         """
         Returns the string representation of CombinedData, essentially
