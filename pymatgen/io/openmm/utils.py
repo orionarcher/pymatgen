@@ -468,3 +468,17 @@ def parameterize_system(
         f"currently only these force fields are supported: {' '.join(supported_force_fields)}.\n"
         f"Please select one of the supported force fields."
     )
+
+
+def topology_to_universe(topology: Topology):
+    """
+    probably no longer needed.
+    """
+    return
+
+
+def get_atom_ix_in_universe(universe, select_strings):
+    """
+    given a universe and select strings, this will return the indices of the selected atoms.
+    """
+    return
