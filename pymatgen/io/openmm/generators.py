@@ -6,10 +6,11 @@ Concrete implementations of InputGenerators for the OpenMM IO.
 from pathlib import Path
 from typing import Union, Optional, Dict, List, Tuple
 
+import json
+
+
 # scipy
 import numpy as np
-
-# openff
 
 # openmm
 from openmm.unit import kelvin, picoseconds
@@ -27,12 +28,13 @@ from pymatgen.io.openmm.inputs import (
     IntegratorInput,
     StateInput,
 )
-from pymatgen.io.openmm.sets import OpenMMSet
+from pymatgen.io.openmm.sets import OpenMMSet, OpenMMAlchemySet
 from pymatgen.io.openmm.utils import (
     get_box,
     get_coordinates,
     get_openmm_topology,
     parameterize_system,
+    topology_to_universe,
 )
 
 __author__ = "Orion Cohen, Ryan Kingsbury"
@@ -130,13 +132,13 @@ class OpenMMSolutionGen(InputGenerator):
         Returns:
             an OpenMM.InputSet
         """
-        assert (density is None) ^ (box is None), "Density OR box must be included, but not both."
         smiles = {smile: count for smile, count in smiles.items() if count > 0}
-        # create dynamic openmm objects with internal methods
-        topology = get_openmm_topology(smiles)
+        assert (density is None) ^ (box is None), "Density OR box must be included, but not both."
         if box is None:
             box = get_box(smiles, density)  # type: ignore
         coordinates = get_coordinates(smiles, box, self.packmol_random_seed, self.initial_geometries)
+        # create dynamic openmm objects with internal methods
+        topology = get_openmm_topology(smiles)
         smile_strings = list(smiles.keys())
         system = parameterize_system(
             topology,
@@ -173,3 +175,44 @@ class OpenMMSolutionGen(InputGenerator):
             state_file=self.state_file,
         )
         return input_set
+
+
+class OpenMMReactionGen(OpenMMSolutionGen):
+    """
+    An InputGenerator for openmm alchemy.
+    """
+
+    def __init__(self, rxn_atoms_file="rxn_atoms.json", force_field_file="force_field.json", **kwargs):
+        super().__init__(kwargs)
+        self.rxn_atoms_file = "rxn_atoms.json"
+        self.force_field_file = "force_field.json"
+
+    def get_input_set(  # type: ignore
+        self,
+        smiles: Dict[str, int],
+        select_dict: Dict[str, str],
+        reactions: List[Tuple[str, str]],
+        density: Optional[float] = None,
+        box: Optional[List[float]] = None,
+    ) -> InputSet:
+        input_set = super().get_input_set(smiles, density, box)
+        topology = TopologyInput.from_string(input_set[self.topology_file]).get_topology()
+        # system = TopologyInput.from_string(input_set[self.system_file]).get_system()  # probably not needed
+        universe = topology_to_universe(topology)
+        atom_groups = {name: universe.select_atoms(select_string) for name, select_string in select_dict.items()}
+        group_ix = {name: atom_group.ix for name, atom_group in atom_groups.items()}
+        forcefield_dict = self.force_field
+        rxn_input_set = OpenMMAlchemySet(
+            inputs={
+                **input_set.inputs,
+                self.rxn_atoms_file: json.dumps(group_ix),
+                self.force_field_file: json.dumps(forcefield_dict),
+            },
+            topology_file=self.topology_file,
+            system_file=self.system_file,
+            integrator_file=self.integrator_file,
+            state_file=self.state_file,
+            rxn_atoms_file=self.rxn_atoms_file,
+            force_field_file=self.force_field_file,
+        )
+        return rxn_input_set
