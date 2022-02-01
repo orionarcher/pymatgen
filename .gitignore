@@ -39,3 +39,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+/pymatgen/io/__init__.py
+/pymatgen/__init__.py
+/pymatgen/.gitignore
