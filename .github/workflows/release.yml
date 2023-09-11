@@ -36,7 +36,7 @@ jobs:
       GULP_LIB: ${{ github.workspace }}/cmd_line/gulp/Libraries
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python 3.9
         uses: actions/setup-python@v4
         with:
@@ -62,7 +62,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
